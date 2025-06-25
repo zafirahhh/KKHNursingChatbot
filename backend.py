@@ -20,8 +20,8 @@ nltk.download('punkt')
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://zafirahhh.github.io"],  # ✅ Replace with your real frontend domain
-    allow_credentials=True,
+    allow_origins=["https://zafirahhh.github.io"],  # Only allow your frontend
+    allow_credentials=False,  # Set to False for widest compatibility
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -217,15 +217,22 @@ def find_best_answer(user_query, chunks, chunk_embeddings, top_k=5):
 
 @app.post("/ask")
 async def ask_question(request: Request):
-    data = await request.json()
-    question = data.get("question")
-    session = data.get("session", "general")
-
-    if session == "quiz":
-        return {"answer": generate_quiz_from_guide(question)}
-    else:
-        result = find_best_answer(question, chunks, chunk_embeddings)
-        return {"answer": result["summary"]}
+    try:
+        data = await request.json()
+        question = data.get("question")
+        session = data.get("session", "general")
+        if not question:
+            return {"error": "Missing 'question' in request."}
+        if session == "quiz":
+            return {"answer": generate_quiz_from_guide(question)}
+        else:
+            result = find_best_answer(question, chunks, chunk_embeddings)
+            return {"answer": result["summary"]}
+    except Exception as e:
+        import traceback
+        print("/ask endpoint error:", e)
+        traceback.print_exc()
+        return {"error": f"Internal server error: {str(e)}"}
 
 
 @app.post("/search")
