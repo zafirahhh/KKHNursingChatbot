@@ -13,6 +13,7 @@ from difflib import SequenceMatcher
 import random
 from typing import List
 
+nltk.data.path.append("/usr/local/share/nltk_data")
 nltk.download('punkt')
 
 # === FastAPI Setup ===
