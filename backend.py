@@ -50,7 +50,7 @@ def load_chunks_from_text(text, max_len=300):
 chunks = load_chunks_from_text(text)
 
 # === Load Model and Chunk Embeddings ===
-model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+model = SentenceTransformer("paraphrase-MiniLM-L3-v2")
 chunk_embeddings = model.encode(chunks, convert_to_tensor=True)
 
 # Main QA Logic
