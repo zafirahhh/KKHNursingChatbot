@@ -2,7 +2,6 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sentence_transformers import SentenceTransformer, util
-import uvicorn
 import os
 import re
 import torch
@@ -50,7 +49,13 @@ def load_chunks_from_text(text, max_len=300):
 chunks = load_chunks_from_text(text)
 
 # === Load Model and Chunk Embeddings ===
-model = SentenceTransformer("paraphrase-MiniLM-L3-v2")
+def get_model():
+    model_name = "paraphrase-MiniLM-L3-v2"
+    cache_dir = os.environ.get("HF_HOME", "/tmp/huggingface")
+    os.makedirs(cache_dir, exist_ok=True)
+    return SentenceTransformer(model_name, cache_folder=cache_dir)
+
+model = get_model()
 chunk_embeddings = model.encode(chunks, convert_to_tensor=True)
 
 # Main QA Logic
