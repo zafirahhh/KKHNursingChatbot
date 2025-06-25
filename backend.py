@@ -20,7 +20,7 @@ nltk.download('punkt')
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["https://zafirahhh.github.io"],
     allow_credentials=False,  # Set to False for widest compatibility
     allow_methods=["*"],
     allow_headers=["*"],
