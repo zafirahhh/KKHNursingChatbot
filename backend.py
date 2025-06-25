@@ -1,4 +1,3 @@
-print("Starting KKH Nursing Chatbot backend...")
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -21,7 +20,7 @@ app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,  # Set to False for widest compatibility
     allow_methods=["*"],
     allow_headers=["*"],
 )
