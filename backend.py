@@ -168,7 +168,6 @@ def find_best_answer(user_query, chunks, chunk_embeddings, top_k=5):
     best_score = 0
     fallback_sent = ""
 
-    # 🔍 Expanded clinical triggers
     clinical_triggers = [
         "red flag", "warning signs", "danger signs", "signs of deterioration",
         "signs of distress", "sepsis indicators", "critically ill child", "high risk symptoms"
@@ -177,17 +176,19 @@ def find_best_answer(user_query, chunks, chunk_embeddings, top_k=5):
     for idx in top_indices:
         chunk = chunks[idx]
 
-        # Skip non-clinical boilerplate
-        if "© kk women's" in chunk.lower(): continue
-        if "table" in chunk.lower() and "assessment" in chunk.lower(): continue
-        if "vital" in chunk.lower() and "heart rate" in chunk.lower(): continue
-        if "bpm" in chunk.lower() and "infant" in chunk.lower(): continue
+        # ⛔ Skip irrelevant headings or short junk
+        if (
+            "© kk women's" in chunk.lower()
+            or "the baby bear book" in chunk.lower()
+            or "loi v-ter" in chunk.lower()
+            or len(chunk.strip()) < 40
+        ):
+            continue
 
-        sentences = [s.strip() for s in sent_tokenize(chunk) if 6 <= len(s.split()) <= 50]
+        sentences = [s.strip() for s in sent_tokenize(chunk) if 8 < len(s.split()) < 50]
 
         for sent in sentences:
             sent_lower = sent.lower()
-            # 🚨 Shortcut if clinical phrase in both query and sentence
             for phrase in clinical_triggers:
                 if phrase in sent_lower and phrase in user_query.lower():
                     return {
@@ -202,18 +203,18 @@ def find_best_answer(user_query, chunks, chunk_embeddings, top_k=5):
             if ',' in sent and len(sent) > len(fallback_sent):
                 fallback_sent = sent
 
-            score = overlap + sim
-            if score > best_score:
-                best_score = score
-                best_sent = sent
+            if overlap >= 2 and sim > 0.5:
+                score = overlap + sim
+                if score > best_score:
+                    best_score = score
+                    best_sent = sent
 
-    summary = best_sent if best_score > 0.5 else fallback_sent or "Sorry, no relevant answer found."
     best_chunk = chunks[top_indices[0]]
+    summary = best_sent if best_score > 0 else fallback_sent
     return {
-        "summary": summary,
+        "summary": summary if summary else "Sorry, I couldn’t find a specific answer. Please rephrase your question.",
         "full": clean_paragraph(best_chunk)
     }
-
 
 @app.post("/ask")
 async def ask_question(request: Request):
