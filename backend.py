@@ -285,9 +285,6 @@ def evaluate_quiz(request: QuizEvaluationRequest):
     return feedback
 
 if __name__ == "__main__":
-    import os
-    import time
-    time.sleep(2)
-    port = int(os.environ.get("PORT", 8080))  # ✅ Default should be 8080
+    import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8080)
 
