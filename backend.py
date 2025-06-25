@@ -20,11 +20,12 @@ nltk.download('punkt')
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://zafirahhh.github.io"],
-    allow_credentials=False,  # Set to False for widest compatibility
+    allow_origins=["https://zafirahhh.github.io"],  # ✅ Replace with your real frontend domain
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 # === Load Knowledge Base ===
 KNOWLEDGE_PATH = os.path.join("data", "nursing_guide_cleaned.txt")
