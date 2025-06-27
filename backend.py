@@ -276,7 +276,7 @@ async def ask_question(request: Request):
             return {"answer": generate_quiz_from_guide(question)}
         else:
             result = find_best_answer(question, chunks, chunk_embeddings)
-            return {"answer": result["summary"]}
+            return {"answer": result["summary"], "full": result["full"]}
     except Exception as e:
         import traceback
         print("/ask endpoint error:", e)
