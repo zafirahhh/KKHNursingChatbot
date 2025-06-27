@@ -205,10 +205,46 @@ def find_best_answer(user_query, chunks, chunk_embeddings, top_k=5):
     # Sort by score, descending
     sentence_scores.sort(reverse=True, key=lambda x: x[0])
     top_sents = [s[1] for s in sentence_scores[:3] if s[0] > 1.5]  # Only take sentences with reasonable score
+    # If top_sents are found, try to return the full context (e.g., bullet list or paragraph) containing the top sentence
     if top_sents:
+        best_sent = top_sents[0]
         best_chunk = sentence_scores[0][2]
+        # Find the paragraph or bullet list containing the best sentence
+        lines = best_chunk.splitlines()
+        result_lines = []
+        found = False
+        for i, line in enumerate(lines):
+            if best_sent in line:
+                found = True
+                # If it's a bullet/list, collect all consecutive bullet/list lines
+                if re.match(r'^[\u2022\-\*\d]+[\.)]?\s', line.strip()):
+                    # Go up to find start of list
+                    start = i
+                    while start > 0 and re.match(r'^[\u2022\-\*\d]+[\.)]?\s', lines[start-1].strip()):
+                        start -= 1
+                    # Go down to find end of list
+                    end = i
+                    while end+1 < len(lines) and re.match(r'^[\u2022\-\*\d]+[\.)]?\s', lines[end+1].strip()):
+                        end += 1
+                    result_lines = lines[start:end+1]
+                else:
+                    # Otherwise, return the full paragraph
+                    para = [line]
+                    # Up
+                    j = i-1
+                    while j >= 0 and lines[j].strip() and not re.match(r'^[\u2022\-\*\d]+[\.)]?\s', lines[j].strip()):
+                        para.insert(0, lines[j])
+                        j -= 1
+                    # Down
+                    j = i+1
+                    while j < len(lines) and lines[j].strip() and not re.match(r'^[\u2022\-\*\d]+[\.)]?\s', lines[j].strip()):
+                        para.append(lines[j])
+                        j += 1
+                    result_lines = para
+                break
+        summary = '\n'.join([l.strip() for l in result_lines if l.strip()]) if found else '\n'.join(top_sents)
         return {
-            "summary": '\n'.join(top_sents),
+            "summary": summary,
             "full": clean_paragraph(best_chunk)
         }
 
