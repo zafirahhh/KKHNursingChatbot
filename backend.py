@@ -242,7 +242,7 @@ def find_best_answer(user_query, chunks, chunk_embeddings, top_k=5):
 
     summary = '\n'.join([l.strip() for l in result_lines if l.strip()]) if found else '\n'.join(top_sents)
 
-    # === Improved Formula Extraction ===
+    # === Improved Answer Formatting ===
     if not summary.strip():
         formula_lines = []
 
@@ -260,40 +260,40 @@ def find_best_answer(user_query, chunks, chunk_embeddings, top_k=5):
                 else:
                     formula_lines.append(m.strip())
 
-            # Convert table-like rows to natural sentences
+            # Convert table-like rows to concise sentences
             for line in chunk.splitlines():
                 if "|" in line:
                     parts = [p.strip() for p in line.split("|")]
 
                     # Systolic BP formula embedded in a table
                     if len(parts) >= 2 and any("age" in p.lower() for p in parts) and any("70" in p for p in parts):
-                        sentence = f"The expected systolic blood pressure for {parts[0].lower()} is {parts[1]} mmHg."
+                        sentence = f"Expected systolic BP: {parts[1]} mmHg for {parts[0].lower()}."
                         formula_lines.append(sentence)
 
                     # Urine output table
                     elif "urine" in user_query.lower() and len(parts) == 2:
-                        sentence = f"The normal urine output for {parts[0].lower()} is {parts[1]} ml/kg/h."
+                        sentence = f"Normal urine output: {parts[1]} ml/kg/h for {parts[0].lower()}."
                         formula_lines.append(sentence)
 
                     # Vitals table
                     elif len(parts) >= 3:
                         age_group, hr, rr, *bp = parts
                         if "heart rate" in user_query.lower():
-                            formula_lines.append(f"The normal heart rate for {age_group.lower()} is {hr} bpm.")
+                            formula_lines.append(f"Normal HR: {hr} bpm for {age_group.lower()}.")
                         if "respiratory" in user_query.lower() or "resp rate" in user_query.lower():
-                            formula_lines.append(f"The normal respiratory rate for {age_group.lower()} is {rr} breaths per minute.")
+                            formula_lines.append(f"Normal RR: {rr} breaths/min for {age_group.lower()}.")
                         if "bp" in user_query.lower() or "blood pressure" in user_query.lower():
                             if bp:
-                                formula_lines.append(f"The normal systolic blood pressure for {age_group.lower()} is {bp[0]} mmHg.")
+                                formula_lines.append(f"Normal systolic BP: {bp[0]} mmHg for {age_group.lower()}.")
 
         if formula_lines:
-            formatted = "\n".join(f"- {line}" for line in formula_lines[:3])
+            formatted = "\n".join(formula_lines[:1])  # Return only the most relevant formula
             return {"summary": formatted, "full": formatted}
 
-    # Final fallback: always return a user-friendly message if nothing found
+    # Final fallback: concise user-friendly message
     return {
-        "summary": summary if summary else "Sorry, I couldn’t find a specific answer. Please rephrase your question or try a different query.",
-        "full": clean_paragraph(best_chunk) if best_chunk else "No additional information available."
+        "summary": summary.split("\n")[0] if summary else "Sorry, I couldn’t find a specific answer. Please rephrase your question.",
+        "full": clean_paragraph(best_chunk).split("\n")[0] if best_chunk else "No additional information available."
     }
 
 @app.post("/ask")
