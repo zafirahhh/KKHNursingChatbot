@@ -168,6 +168,7 @@ def find_best_answer(user_query, chunks, chunk_embeddings, top_k=5):
     best_chunk = ""
     sentence_scores = []
 
+    # Detect short, fact-based, or formula-style prompts
     short_prompt = bool(re.search(r'\b(one|two|three|four|five|\d+|signs|types|examples|causes|normal|range|table|bp|hr|rr|rate|values)\b', user_query.lower()))
     fact_query = bool(re.match(r'^(what|which|how|when|who|name|list)\b', user_query.strip().lower()))
 
@@ -203,7 +204,7 @@ def find_best_answer(user_query, chunks, chunk_embeddings, top_k=5):
     best_sent = top_sents[0] if top_sents else ""
     best_chunk = sentence_scores[0][2] if sentence_scores else ""
 
-    # ✅ Short/fact-based queries
+    # Return short sentences for fact-style questions
     if short_prompt or fact_query:
         sentences = [s.strip() for s in sent_tokenize(best_chunk) if 6 <= len(s.split()) <= 20]
         filtered = [s for s in sentences if any(q in s.lower() for q in question_keywords)]
@@ -213,7 +214,7 @@ def find_best_answer(user_query, chunks, chunk_embeddings, top_k=5):
             "full": "\n".join(final)
         }
 
-    # ✅ Full paragraph/bullet if context-rich
+    # Contextual paragraph or bullet list extraction
     lines = best_chunk.splitlines()
     result_lines = []
     found = False
@@ -243,25 +244,37 @@ def find_best_answer(user_query, chunks, chunk_embeddings, top_k=5):
 
     summary = '\n'.join([l.strip() for l in result_lines if l.strip()]) if found else '\n'.join(top_sents)
 
-    # ✅ FORMULA fallback if nothing is found
+    # \U0001F527 Fallback: Return formulas or table lines if no match found
     if not summary.strip():
         formula_lines = []
+        table_rows = []
+
         for idx in top_indices:
             chunk = chunks[idx]
-            # Match formulas like 70 + (age x 2) or fluid rates
+
+            # Math-style formulas (e.g. "70 + (age x 2)")
             matches = re.findall(r'70\s*\+\s*\(?.*?age.*?\)?[^\|\n]*', chunk, re.IGNORECASE)
             if matches:
                 formula_lines.extend(matches)
+
+            # Fluid or dose lines
             if "fluid" in user_query.lower() or "ml/kg" in chunk.lower():
                 for line in chunk.splitlines():
                     if "ml/kg" in line or "per hour" in line.lower():
                         formula_lines.append(line.strip())
+
+            # Table rows (vitals, age groups)
+            for line in chunk.splitlines():
+                if "|" in line and len(line.strip().split("|")) >= 3:
+                    table_rows.append(line.strip())
+
         if formula_lines:
-            formatted = "\n".join(f"- {line.strip()}" for line in formula_lines[:3])
-            return {
-                "summary": formatted,
-                "full": formatted
-            }
+            formatted = "\n".join(f"- {line}" for line in formula_lines[:3])
+            return {"summary": formatted, "full": formatted}
+
+        if table_rows:
+            formatted = "\n".join(f"- {line}" for line in table_rows[:3])
+            return {"summary": formatted, "full": formatted}
 
     return {
         "summary": summary if summary else "Sorry, I couldn’t find a specific answer. Please rephrase your question.",
