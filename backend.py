@@ -180,7 +180,7 @@ def find_best_answer(user_query, chunks, chunk_embeddings, top_k=5):
     for idx in top_indices:
         chunk = chunks[idx]
 
-        # ⛔ Skip irrelevant headings or short junk, and skip if chunk looks like a table/section heading
+        # Skip irrelevant headings or junk
         if (
             "© kk women's" in chunk.lower()
             or "the baby bear book" in chunk.lower()
@@ -202,63 +202,52 @@ def find_best_answer(user_query, chunks, chunk_embeddings, top_k=5):
             score = overlap + sim + (1 if trigger_score else 0)
             sentence_scores.append((score, sent, chunk))
 
-    # Sort by score, descending
     sentence_scores.sort(reverse=True, key=lambda x: x[0])
-    top_sents = [s[1] for s in sentence_scores[:3] if s[0] > 1.5]  # Only take sentences with reasonable score
-    # If top_sents are found, try to return the full context (e.g., bullet list or paragraph) containing the top sentence
-    if top_sents:
-        best_sent = top_sents[0]
-        best_chunk = sentence_scores[0][2]
-        # Find the paragraph or bullet list containing the best sentence
-        lines = best_chunk.splitlines()
-        result_lines = []
-        found = False
-        for i, line in enumerate(lines):
-            if best_sent in line:
-                found = True
-                # If it's a bullet/list, collect all consecutive bullet/list lines
-                if re.match(r'^[\u2022\-\*\d]+[\.)]?\s', line.strip()):
-                    # Go up to find start of list
-                    start = i
-                    while start > 0 and re.match(r'^[\u2022\-\*\d]+[\.)]?\s', lines[start-1].strip()):
-                        start -= 1
-                    # Go down to find end of list
-                    end = i
-                    while end+1 < len(lines) and re.match(r'^[\u2022\-\*\d]+[\.)]?\s', lines[end+1].strip()):
-                        end += 1
-                    result_lines = lines[start:end+1]
-                else:
-                    # Otherwise, return the full paragraph
-                    para = [line]
-                    # Up
-                    j = i-1
-                    while j >= 0 and lines[j].strip() and not re.match(r'^[\u2022\-\*\d]+[\.)]?\s', lines[j].strip()):
-                        para.insert(0, lines[j])
-                        j -= 1
-                    # Down
-                    j = i+1
-                    while j < len(lines) and lines[j].strip() and not re.match(r'^[\u2022\-\*\d]+[\.)]?\s', lines[j].strip()):
-                        para.append(lines[j])
-                        j += 1
-                    result_lines = para
-                break
-        summary = '\n'.join([l.strip() for l in result_lines if l.strip()]) if found else '\n'.join(top_sents)
+    top_sents = [s[1] for s in sentence_scores[:3] if s[0] > 1.5]
+    best_sent = top_sents[0] if top_sents else ""
+    best_chunk = sentence_scores[0][2] if sentence_scores else ""
+
+    # --- Smart truncation for short numeric/fact-based queries ---
+    short_prompt = bool(re.search(r'\b(one|two|three|four|five|\d+|signs|types|examples|causes|normal|range|table|bp|hr|rr|rate|values)\b', user_query.lower()))
+
+    if short_prompt:
+        lines = [l.strip() for l in best_chunk.splitlines() if len(l.strip()) > 5]
+        selected_lines = lines[:3] if len(lines) >= 3 else lines
+        summary = "\n".join(selected_lines)
         return {
             "summary": summary,
-            "full": clean_paragraph(best_chunk)
+            "full": summary
         }
 
-    # If all top chunks are headings, fallback to the first non-heading chunk
-    for idx in top_indices:
-        chunk = chunks[idx]
-        if not (re.match(r'^(table|figure|section|chapter)\\s*\\d+|^table|^figure|^section|^chapter', chunk.strip().lower())
-                or (len(chunk.split()) < 15 and chunk.strip().endswith('Assessment'))):
-            best_chunk = chunk
+    # Otherwise return the full paragraph or bullet list from context
+    lines = best_chunk.splitlines()
+    result_lines = []
+    found = False
+    for i, line in enumerate(lines):
+        if best_sent in line:
+            found = True
+            if re.match(r'^[\u2022\-\*\d]+[\.)]?\s', line.strip()):
+                start = i
+                while start > 0 and re.match(r'^[\u2022\-\*\d]+[\.)]?\s', lines[start - 1].strip()):
+                    start -= 1
+                end = i
+                while end + 1 < len(lines) and re.match(r'^[\u2022\-\*\d]+[\.)]?\s', lines[end + 1].strip()):
+                    end += 1
+                result_lines = lines[start:end + 1]
+            else:
+                para = [line]
+                j = i - 1
+                while j >= 0 and lines[j].strip() and not re.match(r'^[\u2022\-\*\d]+[\.)]?\s', lines[j].strip()):
+                    para.insert(0, lines[j])
+                    j -= 1
+                j = i + 1
+                while j < len(lines) and lines[j].strip() and not re.match(r'^[\u2022\-\*\d]+[\.)]?\s', lines[j].strip()):
+                    para.append(lines[j])
+                    j += 1
+                result_lines = para
             break
-    else:
-        best_chunk = chunks[top_indices[0]]
 
-    summary = best_sent if best_score > 0 else fallback_sent
+    summary = '\n'.join([l.strip() for l in result_lines if l.strip()]) if found else '\n'.join(top_sents)
     return {
         "summary": summary if summary else "Sorry, I couldn’t find a specific answer. Please rephrase your question.",
         "full": clean_paragraph(best_chunk)
