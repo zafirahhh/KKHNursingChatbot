@@ -174,6 +174,9 @@ def find_best_answer(user_query, chunks, chunk_embeddings, top_k=5):
         "signs of distress", "sepsis indicators", "critically ill child", "high risk symptoms"
     ]
 
+    best_sentences = []
+    sentence_scores = []
+
     for idx in top_indices:
         chunk = chunks[idx]
 
@@ -190,35 +193,24 @@ def find_best_answer(user_query, chunks, chunk_embeddings, top_k=5):
 
         sentences = [s.strip() for s in sent_tokenize(chunk) if 8 < len(s.split()) < 50]
 
-        # Collect all sentences that have significant keyword overlap
-        multiline_sents = [s for s in sentences if len(set(re.findall(r'\w+', s.lower())) & question_keywords) >= 2]
-        if len(multiline_sents) >= 2:
-            return {
-                "summary": '\n'.join(multiline_sents),
-                "full": clean_paragraph(chunk)
-            }
-
         for sent in sentences:
             sent_lower = sent.lower()
-            for phrase in clinical_triggers:
-                if phrase in sent_lower and phrase in user_query.lower():
-                    return {
-                        "summary": sent,
-                        "full": clean_paragraph(chunk)
-                    }
-
             sent_keywords = set(re.findall(r'\w+', sent_lower))
             overlap = len(sent_keywords & question_keywords)
             sim = SequenceMatcher(None, user_query.lower(), sent_lower).ratio()
+            trigger_score = any(phrase in sent_lower or phrase in user_query.lower() for phrase in clinical_triggers)
+            score = overlap + sim + (1 if trigger_score else 0)
+            sentence_scores.append((score, sent, chunk))
 
-            if ',' in sent and len(sent) > len(fallback_sent):
-                fallback_sent = sent
-
-            if overlap >= 2 and sim > 0.5:
-                score = overlap + sim
-                if score > best_score:
-                    best_score = score
-                    best_sent = sent
+    # Sort by score, descending
+    sentence_scores.sort(reverse=True, key=lambda x: x[0])
+    top_sents = [s[1] for s in sentence_scores[:3] if s[0] > 1.5]  # Only take sentences with reasonable score
+    if top_sents:
+        best_chunk = sentence_scores[0][2]
+        return {
+            "summary": '\n'.join(top_sents),
+            "full": clean_paragraph(best_chunk)
+        }
 
     # If all top chunks are headings, fallback to the first non-heading chunk
     for idx in top_indices:
