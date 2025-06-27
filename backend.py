@@ -168,7 +168,6 @@ def find_best_answer(user_query, chunks, chunk_embeddings, top_k=5):
     best_chunk = ""
     sentence_scores = []
 
-    # Detect short, fact-based, or formula-style prompts
     short_prompt = bool(re.search(r'\b(one|two|three|four|five|\d+|signs|types|examples|causes|normal|range|table|bp|hr|rr|rate|values)\b', user_query.lower()))
     fact_query = bool(re.match(r'^(what|which|how|when|who|name|list)\b', user_query.strip().lower()))
 
@@ -204,7 +203,6 @@ def find_best_answer(user_query, chunks, chunk_embeddings, top_k=5):
     best_sent = top_sents[0] if top_sents else ""
     best_chunk = sentence_scores[0][2] if sentence_scores else ""
 
-    # Return short sentences for fact-style questions
     if short_prompt or fact_query:
         sentences = [s.strip() for s in sent_tokenize(best_chunk) if 6 <= len(s.split()) <= 20]
         filtered = [s for s in sentences if any(q in s.lower() for q in question_keywords)]
@@ -214,7 +212,7 @@ def find_best_answer(user_query, chunks, chunk_embeddings, top_k=5):
             "full": "\n".join(final)
         }
 
-    # Contextual paragraph or bullet list extraction
+    # Contextual fallback if not short/fact
     lines = best_chunk.splitlines()
     result_lines = []
     found = False
@@ -244,15 +242,14 @@ def find_best_answer(user_query, chunks, chunk_embeddings, top_k=5):
 
     summary = '\n'.join([l.strip() for l in result_lines if l.strip()]) if found else '\n'.join(top_sents)
 
-    # \U0001F527 Fallback: Return formulas or table lines if no match found
+    # === Fallback: Generate sentence from formulas or table rows ===
     if not summary.strip():
         formula_lines = []
-        table_rows = []
 
         for idx in top_indices:
             chunk = chunks[idx]
 
-            # 🔍 Flexible match for "Expected systolic BP" formulas
+            # Match formulas like "Expected systolic BP"
             matches = re.findall(r'(expected systolic bp.*?(70\s*\+\s*\(?age.*?\)?))', chunk, re.IGNORECASE)
             if not matches:
                 matches = re.findall(r'(70\s*\+\s*\(?\s*age.*?\)?)', chunk, re.IGNORECASE)
@@ -263,25 +260,34 @@ def find_best_answer(user_query, chunks, chunk_embeddings, top_k=5):
                 else:
                     formula_lines.append(m.strip())
 
-            # 🔍 Match fluid rate lines
-            if "fluid" in user_query.lower() or "ml/kg" in chunk.lower():
-                for line in chunk.splitlines():
-                    if "ml/kg" in line.lower() or "per hour" in line.lower():
-                        formula_lines.append(line.strip())
-
-            # 🔍 Table row match
+            # Convert table-like rows to natural sentences
             for line in chunk.splitlines():
-                if "|" in line and len(line.strip().split("|")) >= 3:
-                    table_rows.append(line.strip())
+                if "|" in line:
+                    parts = [p.strip() for p in line.split("|")]
 
-        # ✅ Return formula lines if found
+                    # Systolic BP formula embedded in a table
+                    if len(parts) >= 2 and any("age" in p.lower() for p in parts) and any("70" in p for p in parts):
+                        sentence = f"The expected systolic blood pressure for {parts[0].lower()} is {parts[1]} mmHg."
+                        formula_lines.append(sentence)
+
+                    # Urine output table
+                    elif "urine" in user_query.lower() and len(parts) == 2:
+                        sentence = f"The normal urine output for {parts[0].lower()} is {parts[1]} ml/kg/h."
+                        formula_lines.append(sentence)
+
+                    # Vitals table
+                    elif len(parts) >= 3:
+                        age_group, hr, rr, *bp = parts
+                        if "heart rate" in user_query.lower():
+                            formula_lines.append(f"The normal heart rate for {age_group.lower()} is {hr} bpm.")
+                        if "respiratory" in user_query.lower() or "resp rate" in user_query.lower():
+                            formula_lines.append(f"The normal respiratory rate for {age_group.lower()} is {rr} breaths per minute.")
+                        if "bp" in user_query.lower() or "blood pressure" in user_query.lower():
+                            if bp:
+                                formula_lines.append(f"The normal systolic blood pressure for {age_group.lower()} is {bp[0]} mmHg.")
+
         if formula_lines:
             formatted = "\n".join(f"- {line}" for line in formula_lines[:3])
-            return {"summary": formatted, "full": formatted}
-
-        # ✅ Return table rows if found
-        if table_rows:
-            formatted = "\n".join(f"- {line}" for line in table_rows[:3])
             return {"summary": formatted, "full": formatted}
 
     return {
