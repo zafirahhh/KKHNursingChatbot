@@ -252,26 +252,34 @@ def find_best_answer(user_query, chunks, chunk_embeddings, top_k=5):
         for idx in top_indices:
             chunk = chunks[idx]
 
-            # Math-style formulas (e.g. "70 + (age x 2)")
-            matches = re.findall(r'70\s*\+\s*\(?.*?age.*?\)?[^\|\n]*', chunk, re.IGNORECASE)
-            if matches:
-                formula_lines.extend(matches)
+            # 🔍 Flexible match for "Expected systolic BP" formulas
+            matches = re.findall(r'(expected systolic bp.*?(70\s*\+\s*\(?age.*?\)?))', chunk, re.IGNORECASE)
+            if not matches:
+                matches = re.findall(r'(70\s*\+\s*\(?\s*age.*?\)?)', chunk, re.IGNORECASE)
 
-            # Fluid or dose lines
+            for m in matches:
+                if isinstance(m, tuple):
+                    formula_lines.append(m[0].strip())
+                else:
+                    formula_lines.append(m.strip())
+
+            # 🔍 Match fluid rate lines
             if "fluid" in user_query.lower() or "ml/kg" in chunk.lower():
                 for line in chunk.splitlines():
-                    if "ml/kg" in line or "per hour" in line.lower():
+                    if "ml/kg" in line.lower() or "per hour" in line.lower():
                         formula_lines.append(line.strip())
 
-            # Table rows (vitals, age groups)
+            # 🔍 Table row match
             for line in chunk.splitlines():
                 if "|" in line and len(line.strip().split("|")) >= 3:
                     table_rows.append(line.strip())
 
+        # ✅ Return formula lines if found
         if formula_lines:
             formatted = "\n".join(f"- {line}" for line in formula_lines[:3])
             return {"summary": formatted, "full": formatted}
 
+        # ✅ Return table rows if found
         if table_rows:
             formatted = "\n".join(f"- {line}" for line in table_rows[:3])
             return {"summary": formatted, "full": formatted}
