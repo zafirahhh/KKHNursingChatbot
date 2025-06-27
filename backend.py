@@ -167,6 +167,7 @@ def find_best_answer(user_query, chunks, chunk_embeddings, top_k=5):
     best_sent = ""
     best_score = 0
     fallback_sent = ""
+    multiline_sents = []
 
     clinical_triggers = [
         "red flag", "warning signs", "danger signs", "signs of deterioration",
@@ -188,6 +189,14 @@ def find_best_answer(user_query, chunks, chunk_embeddings, top_k=5):
             continue
 
         sentences = [s.strip() for s in sent_tokenize(chunk) if 8 < len(s.split()) < 50]
+
+        # Collect all sentences that have significant keyword overlap
+        multiline_sents = [s for s in sentences if len(set(re.findall(r'\w+', s.lower())) & question_keywords) >= 2]
+        if len(multiline_sents) >= 2:
+            return {
+                "summary": '\n'.join(multiline_sents),
+                "full": clean_paragraph(chunk)
+            }
 
         for sent in sentences:
             sent_lower = sent.lower()
