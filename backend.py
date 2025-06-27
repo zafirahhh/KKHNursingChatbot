@@ -176,12 +176,14 @@ def find_best_answer(user_query, chunks, chunk_embeddings, top_k=5):
     for idx in top_indices:
         chunk = chunks[idx]
 
-        # ⛔ Skip irrelevant headings or short junk
+        # ⛔ Skip irrelevant headings or short junk, and skip if chunk looks like a table/section heading
         if (
             "© kk women's" in chunk.lower()
             or "the baby bear book" in chunk.lower()
             or "loi v-ter" in chunk.lower()
             or len(chunk.strip()) < 40
+            or re.match(r'^(table|figure|section|chapter)\\s*\\d+|^table|^figure|^section|^chapter', chunk.strip().lower())
+            or (len(chunk.split()) < 15 and chunk.strip().endswith('Assessment'))
         ):
             continue
 
@@ -209,7 +211,16 @@ def find_best_answer(user_query, chunks, chunk_embeddings, top_k=5):
                     best_score = score
                     best_sent = sent
 
-    best_chunk = chunks[top_indices[0]]
+    # If all top chunks are headings, fallback to the first non-heading chunk
+    for idx in top_indices:
+        chunk = chunks[idx]
+        if not (re.match(r'^(table|figure|section|chapter)\\s*\\d+|^table|^figure|^section|^chapter', chunk.strip().lower())
+                or (len(chunk.split()) < 15 and chunk.strip().endswith('Assessment'))):
+            best_chunk = chunk
+            break
+    else:
+        best_chunk = chunks[top_indices[0]]
+
     summary = best_sent if best_score > 0 else fallback_sent
     return {
         "summary": summary if summary else "Sorry, I couldn’t find a specific answer. Please rephrase your question.",
