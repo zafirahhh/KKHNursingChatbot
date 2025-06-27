@@ -165,28 +165,22 @@ def find_best_answer(user_query, chunks, chunk_embeddings, top_k=5):
 
     question_keywords = set(re.findall(r'\w+', user_query.lower()))
     best_sent = ""
-    best_score = 0
-    fallback_sent = ""
-    multiline_sents = []
-
-    clinical_triggers = [
-        "red flag", "warning signs", "danger signs", "signs of deterioration",
-        "signs of distress", "sepsis indicators", "critically ill child", "high risk symptoms"
-    ]
-
-    best_sentences = []
+    best_chunk = ""
     sentence_scores = []
+
+    # ✅ NEW: Detect short/fact-based questions
+    short_prompt = bool(re.search(r'\b(one|two|three|four|five|\d+|signs|types|examples|causes|normal|range|table|bp|hr|rr|rate|values)\b', user_query.lower()))
+    fact_query = bool(re.match(r'^(what|which|how|when|who|name|list)\b', user_query.strip().lower()))
 
     for idx in top_indices:
         chunk = chunks[idx]
 
-        # Skip irrelevant headings or junk
         if (
             "© kk women's" in chunk.lower()
             or "the baby bear book" in chunk.lower()
             or "loi v-ter" in chunk.lower()
             or len(chunk.strip()) < 40
-            or re.match(r'^(table|figure|section|chapter)\\s*\\d+|^table|^figure|^section|^chapter', chunk.strip().lower())
+            or re.match(r'^(table|figure|section|chapter)\s*\d+|^table|^figure|^section|^chapter', chunk.strip().lower())
             or (len(chunk.split()) < 15 and chunk.strip().endswith('Assessment'))
         ):
             continue
@@ -198,7 +192,10 @@ def find_best_answer(user_query, chunks, chunk_embeddings, top_k=5):
             sent_keywords = set(re.findall(r'\w+', sent_lower))
             overlap = len(sent_keywords & question_keywords)
             sim = SequenceMatcher(None, user_query.lower(), sent_lower).ratio()
-            trigger_score = any(phrase in sent_lower or phrase in user_query.lower() for phrase in clinical_triggers)
+            trigger_score = any(phrase in sent_lower or phrase in user_query.lower() for phrase in [
+                "red flag", "warning signs", "danger signs", "signs of deterioration",
+                "signs of distress", "sepsis indicators", "critically ill child", "high risk symptoms"
+            ])
             score = overlap + sim + (1 if trigger_score else 0)
             sentence_scores.append((score, sent, chunk))
 
@@ -207,19 +204,17 @@ def find_best_answer(user_query, chunks, chunk_embeddings, top_k=5):
     best_sent = top_sents[0] if top_sents else ""
     best_chunk = sentence_scores[0][2] if sentence_scores else ""
 
-    # --- Smart truncation for short numeric/fact-based queries ---
-    short_prompt = bool(re.search(r'\b(one|two|three|four|five|\d+|signs|types|examples|causes|normal|range|table|bp|hr|rr|rate|values)\b', user_query.lower()))
-
-    if short_prompt:
-        lines = [l.strip() for l in best_chunk.splitlines() if len(l.strip()) > 5]
-        selected_lines = lines[:3] if len(lines) >= 3 else lines
-        summary = "\n".join(selected_lines)
+    # ✅ Return concise answers for short or fact-based queries
+    if short_prompt or fact_query:
+        sentences = [s.strip() for s in sent_tokenize(best_chunk) if 6 <= len(s.split()) <= 20]
+        filtered = [s for s in sentences if any(q in s.lower() for q in question_keywords)]
+        final = filtered or sentences[:3]
         return {
-            "summary": summary,
-            "full": summary
+            "summary": "\n".join(final),
+            "full": "\n".join(final)
         }
 
-    # Otherwise return the full paragraph or bullet list from context
+    # ✅ Otherwise return paragraph or bullet list for context-rich prompts
     lines = best_chunk.splitlines()
     result_lines = []
     found = False
