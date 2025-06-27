@@ -242,7 +242,7 @@ def find_best_answer(user_query, chunks, chunk_embeddings, top_k=5):
 
     summary = '\n'.join([l.strip() for l in result_lines if l.strip()]) if found else '\n'.join(top_sents)
 
-    # === Fallback: Generate sentence from formulas or table rows ===
+    # === Improved Formula Extraction ===
     if not summary.strip():
         formula_lines = []
 
@@ -290,9 +290,10 @@ def find_best_answer(user_query, chunks, chunk_embeddings, top_k=5):
             formatted = "\n".join(f"- {line}" for line in formula_lines[:3])
             return {"summary": formatted, "full": formatted}
 
+    # Final fallback: always return a user-friendly message if nothing found
     return {
-        "summary": summary if summary else "Sorry, I couldn’t find a specific answer. Please rephrase your question.",
-        "full": clean_paragraph(best_chunk)
+        "summary": summary if summary else "Sorry, I couldn’t find a specific answer. Please rephrase your question or try a different query.",
+        "full": clean_paragraph(best_chunk) if best_chunk else "No additional information available."
     }
 
 @app.post("/ask")
