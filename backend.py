@@ -297,28 +297,30 @@ def find_best_answer(user_query, chunks, chunk_embeddings, top_k=5):
         "full": clean_paragraph(best_chunk).split("\n")[0] if best_chunk else "No additional information."
     }
 
-def generate_with_zephyr(prompt: str, model: str = "zephyr") -> str:
+def generate_with_zephyr(prompt: str, model: str = "huggingface4_-_zephyr-7b-beta") -> str:
     """
-    Sends prompt to local LM Studio running Zephyr or another model.
+    Sends prompt to Zephyr running in LM Studio via OpenAI-compatible endpoint.
     """
     try:
-        response = requests.post(
-            "http://localhost:11434/api/generate",
-            json={
-                "model": model,
-                "prompt": prompt,
-                "stream": False,
-                "options": {
-                    "num_predict": 300
-                }
-            }
-        )
+        headers = {"Content-Type": "application/json"}
+        payload = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": "You are a helpful paediatric nurse assistant chatbot."},
+                {"role": "user", "content": prompt}
+            ],
+            "temperature": 0.4,
+            "max_tokens": 512
+        }
+
+        response = requests.post("http://localhost:1234/v1/chat/completions", headers=headers, json=payload)
         if response.status_code == 200:
-            return response.json()["response"].strip()
+            return response.json()["choices"][0]["message"]["content"].strip()
         else:
-            return f"⚠️ Zephyr generation failed. Status {response.status_code}"
+            return f"⚠️ Zephyr returned error {response.status_code}: {response.text}"
     except Exception as e:
         return f"❌ Error contacting Zephyr: {e}"
+
 
 @app.post("/ask")
 async def ask_question(request: QueryRequest):
