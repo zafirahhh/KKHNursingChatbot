@@ -13,6 +13,13 @@ from difflib import SequenceMatcher
 import random
 from typing import List
 import requests
+from pydantic import BaseModel
+import numpy as np
+
+# === CONFIGURATION ===
+TAILSCALE_BASE_URL = "http://100.96.212.48:1234"
+EMBEDDING_MODEL = "text-embedding-nomic-embed-text-v1.5"
+CHAT_MODEL = "huggingface4_-_zephyr-7b-beta"
 
 nltk.data.path.append("/usr/local/share/nltk_data")
 nltk.download('punkt')
