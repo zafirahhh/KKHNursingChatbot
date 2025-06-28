@@ -12,6 +12,7 @@ from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
 from difflib import SequenceMatcher
 import random
 from typing import List
+import requests
 
 nltk.data.path.append("/usr/local/share/nltk_data")
 nltk.download('punkt')
@@ -52,7 +53,7 @@ chunks = load_chunks_from_text(text)
 
 # === Load Model and Chunk Embeddings ===
 def get_model():
-    model_name = "paraphrase-MiniLM-L3-v2"
+    model_name = "nomic-ai/nomic-embed-text-v1"
     cache_dir = os.environ.get("HF_HOME", "/tmp/huggingface")
     os.makedirs(cache_dir, exist_ok=True)
     return SentenceTransformer(model_name, cache_folder=cache_dir)
@@ -296,24 +297,53 @@ def find_best_answer(user_query, chunks, chunk_embeddings, top_k=5):
         "full": clean_paragraph(best_chunk).split("\n")[0] if best_chunk else "No additional information."
     }
 
-@app.post("/ask")
-async def ask_question(request: Request):
+def generate_with_zephyr(prompt: str, model: str = "zephyr") -> str:
+    """
+    Sends prompt to local LM Studio running Zephyr or another model.
+    """
     try:
-        data = await request.json()
-        question = data.get("question")
-        session = data.get("session", "general")
-        if not question:
-            return {"error": "Missing 'question' in request."}
-        if session == "quiz":
-            return {"answer": generate_quiz_from_guide(question)}
+        response = requests.post(
+            "http://localhost:11434/api/generate",
+            json={
+                "model": model,
+                "prompt": prompt,
+                "stream": False,
+                "options": {
+                    "num_predict": 300
+                }
+            }
+        )
+        if response.status_code == 200:
+            return response.json()["response"].strip()
         else:
-            result = find_best_answer(question, chunks, chunk_embeddings)
-            return {"answer": result["summary"], "full": result["full"]}
+            return f"⚠️ Zephyr generation failed. Status {response.status_code}"
     except Exception as e:
-        import traceback
-        print("/ask endpoint error:", e)
-        traceback.print_exc()
-        return {"error": f"Internal server error: {str(e)}"}
+        return f"❌ Error contacting Zephyr: {e}"
+
+@app.post("/ask")
+async def ask_question(request: QueryRequest):
+    user_query = request.query
+    top_k = 3
+    query_embedding = model.encode(user_query, convert_to_tensor=True)
+    similarities = util.pytorch_cos_sim(query_embedding, chunk_embeddings)[0]
+    top_indices = similarities.topk(k=top_k).indices.tolist()
+    retrieved_chunks = [chunks[i] for i in top_indices]
+    context = "\n\n".join(retrieved_chunks[:3])  # Top 3 chunks joined together
+
+
+    # Compose prompt for Zephyr
+    prompt = f"""You are a helpful paediatric nurse assistant chatbot. Use the context below to answer the user's question as accurately and logically as possible.
+
+Context:
+{context}
+
+Question:
+{user_query}
+
+Answer:"""
+
+    answer = generate_with_zephyr(prompt)
+    return {"answer": answer}
 
 
 @app.post("/search")
